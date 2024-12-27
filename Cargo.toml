@@ -3,5 +3,10 @@ resolver = "2"
 
 members = [
   "crates/casp"
-  
 ]
+
+[workspace.dependencies]
+anyhow = {version = "1"}
+clap = {version = "4", features = ["derive"]}
+serde = {version = "1", features = ["derive"]}
+serde_json = {version = "1"}

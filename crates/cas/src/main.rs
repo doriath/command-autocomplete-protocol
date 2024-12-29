@@ -1,6 +1,6 @@
 use cas::carapace::{run_carapace, CarapaceArgs};
 use cas::nushell::{run_nushell, NushellArgs};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -11,15 +11,41 @@ struct AppArgs {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    Carapace(CarapaceArgs),
+    Shell(ShellArgs),
+    Bridge(BridgeArgs),
+}
+
+#[derive(Debug, Args)]
+struct ShellArgs {
+    #[clap(subcommand)]
+    command: ShellCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum ShellCommand {
     Nushell(NushellArgs),
+}
+
+#[derive(Debug, Args)]
+struct BridgeArgs {
+    #[clap(subcommand)]
+    command: BridgeCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum BridgeCommand {
+    Carapace(CarapaceArgs),
 }
 
 fn main() -> anyhow::Result<()> {
     let args = AppArgs::parse();
 
     match args.command {
-        Command::Carapace(args) => run_carapace(args),
-        Command::Nushell(args) => run_nushell(args),
+        Command::Bridge(bridge) => match bridge.command {
+            BridgeCommand::Carapace(args) => run_carapace(args),
+        },
+        Command::Shell(shell) => match shell.command {
+            ShellCommand::Nushell(args) => run_nushell(args),
+        },
     }
 }

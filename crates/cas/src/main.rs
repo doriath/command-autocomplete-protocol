@@ -1,5 +1,5 @@
-use casp::carapace::{run_carapace, CarapaceArgs};
-use casp::nushell::{run_nushell, NushellArgs};
+use cas::carapace::{run_carapace, CarapaceArgs};
+use cas::nushell::{run_nushell, NushellArgs};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]

@@ -80,21 +80,21 @@ of the box.
 3. Install the binary:
 
   ```
-  cargo install --path crates/casp
+  cargo install --path crates/cas
   ```
 
 4. Configure external completion in `nushell`:
 
   ```nushell
-  let casp_completer = {|spans|
-    casp nushell -- ...$spans | from json
+  let cap_completer = {|spans|
+    cas nushell -- ...$spans | from json
   }
   $env.config = {
     completions: {
       external: {
         enable: true,
         max_results: 100,
-        completer: $casp_completer,
+        completer: $cap_completer,
       },
     },
   }

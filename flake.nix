@@ -1,5 +1,5 @@
 {
-  description = "Flake for casp";
+  description = "Flake for Command Autocompletion Server";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -19,7 +19,7 @@
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
-        manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
+        manifest = (pkgs.lib.importTOML ./crates/cas/Cargo.toml).package;
         rust = pkgs.rust-bin.stable.latest.default;
         rustPlatform = pkgs.recurseIntoAttrs (
           pkgs.makeRustPlatform {
@@ -27,25 +27,23 @@
             cargo = rust;
           }
         );
-        beanru = rustPlatform.buildRustPackage {
+        cas = rustPlatform.buildRustPackage {
           name = manifest.name;
           version = manifest.version;
           cargoLock = {
             lockFile = ./Cargo.lock;
           };
           src = pkgs.lib.cleanSource ./.;
-          buildFeatures = [ "build-binary" ];
           nativeBuildInputs = [ pkgs.pkg-config ];
         };
       in
       rec {
-        packages = flake-utils.lib.flattenTree { beanru = beanru; };
+        packages = flake-utils.lib.flattenTree { cas = cas; };
 
-        defaultPackage = packages.casp;
+        defaultPackage = packages.cas;
 
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            pkgs.bashInteractive
             pkgs.rust-analyzer
             rust
           ];

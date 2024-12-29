@@ -1,5 +1,5 @@
 {
-  description = "Flake for Command Autocompletion Server";
+  description = "Flake for Command Autocomplete";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -19,7 +19,7 @@
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
-        manifest = (pkgs.lib.importTOML ./crates/cas/Cargo.toml).package;
+        manifest = (pkgs.lib.importTOML ./crates/command-autocomplete/Cargo.toml).package;
         rust = pkgs.rust-bin.stable.latest.default;
         rustPlatform = pkgs.recurseIntoAttrs (
           pkgs.makeRustPlatform {
@@ -27,7 +27,7 @@
             cargo = rust;
           }
         );
-        cas = rustPlatform.buildRustPackage {
+        command-autocomplete = rustPlatform.buildRustPackage {
           name = manifest.name;
           version = manifest.version;
           cargoLock = {
@@ -38,9 +38,9 @@
         };
       in
       rec {
-        packages = flake-utils.lib.flattenTree { cas = cas; };
+        packages = flake-utils.lib.flattenTree { command-autocomplete = command-autocomplete; };
 
-        defaultPackage = packages.cas;
+        defaultPackage = packages.command-autocomplete;
 
         devShells.default = pkgs.mkShell {
           buildInputs = [

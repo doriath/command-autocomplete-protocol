@@ -1,6 +1,6 @@
-use cas::carapace::{run_carapace, CarapaceArgs};
-use cas::nushell::{run_nushell, NushellArgs};
 use clap::{Args, Parser, Subcommand};
+use command_autocomplete::carapace::{run_carapace, CarapaceArgs};
+use command_autocomplete::nushell::{run_nushell, NushellArgs};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

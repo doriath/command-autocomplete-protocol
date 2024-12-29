@@ -2,7 +2,7 @@
 resolver = "2"
 
 members = [
-  "crates/cas"
+  "crates/command-autocomplete"
 ]
 
 [workspace.dependencies]

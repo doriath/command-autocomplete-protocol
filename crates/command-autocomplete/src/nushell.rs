@@ -14,8 +14,8 @@ pub struct NushellArgs {
 
 pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
     // TODO: make it customizable (we should actually invoke a router)
-    let mut child = Command::new("casp")
-        .args(["carapace"])
+    let mut child = Command::new("command-autocomplete")
+        .args(["bridge", "carapace"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;

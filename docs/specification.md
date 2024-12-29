@@ -1,12 +1,12 @@
-# Specification - Command Autocompletion Protocol
+# Specification - Command Autocomplete Protocol
 
-Version: 0.0.1
+Version: 0.1.0
 
 ## Overview
 
-This document defines a Command Autocompletion Protocol. It is an RPC like
-protocol between client (e.g. shell) and server (e.g. CLI providing the
-autocompletions).
+This document defines a Command Autocomplete Protocol. It is an RPC like
+protocol between a client (e.g. shell) and a server (e.g. CLI providing the
+completions).
 
 ## Conventions
 
@@ -14,17 +14,13 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
 "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
 interpreted as described in [RFC 2119](http://www.ietf.org/rfc/rfc4627.txt).
 
-The type definitions are currently defined using typescript. `...` at the end of the
-interface means it is `open`, and new fields might be added in the future. The
-implementations should not fail if additional fields are set. When `...` is not
-present, the interface is `closed`. The implementations should fail if unknown field
-is found in `closed` interface. Adding a new field to such struct is considered
-a breaking change.
+The type definitions are currently defined using typescript.
 
 To represent a lack of value, we always use lack of field in the object. No
 field should ever be set to `null`. This is chosen as we will want to extend
 objects over time with new fields, so all implementations should always handle
-new, unknown fields in the `open` interfaces.
+new, unknown fields in the object (unless explicitly stated that the object is
+`closed` and will not have new fields).
 
 TODO: consider if we should allow nulls, and just treat them always the same way
 as missing field.
@@ -42,6 +38,7 @@ export type Message = Request | Response;
 ```
 
 ```typescript
+// Closed (will not have new fields)
 interface Request {
   id: string;
   method: string;
@@ -52,11 +49,13 @@ interface Request {
 ```typescript
 export type Response = ResponseOk | ResponseError; 
 
+// Closed (will not have new fields)
 interface ResponseOk {
   id: string;
   result: object;
 }
 
+// Closed (will not have new fields)
 interface ResponseError {
   id: string;
   error: Error;
@@ -65,7 +64,6 @@ interface ResponseError {
 interface Error {
   code: string;
   message: string;
-  ...
 }
 ```
 

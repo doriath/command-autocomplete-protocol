@@ -100,22 +100,6 @@ as a bridge to support many completions out of the box.
   }
   ```
 
-## Plan
-
-0.1.0 - Initial Proof of concept
-
-- support only nushell
-- support carapace bridge
-- basic specification
-
-0.2.0 - MVP
-
-- support bash & zsh (to ensure we did not over fit into nushell)
-- basic support for clap crate (through external crate), to make providing native support for CAP easy.
-- support plugins
-- support nesting
-- make carapace optional
-
 ## Open questions
 
 - can we provide configuration less setup (where installing new CLI does
@@ -125,6 +109,6 @@ as a bridge to support many completions out of the box.
 
 # License
 
-Command Autocompletion Protocol and Server are available as Open Source
+Command Autocomplete Protocol and Server are available as Open Source
 Software, under the Apache 2.0 license. See [LICENSE](LICENSE.md) for details
 about copyright and redistribution.

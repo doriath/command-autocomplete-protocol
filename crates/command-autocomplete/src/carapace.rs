@@ -10,10 +10,12 @@ use std::process::Command;
 pub struct CarapaceArgs {}
 
 pub fn run_carapace(_args: CarapaceArgs) -> anyhow::Result<()> {
+    log::trace!("started carapace");
     let stdin = std::io::stdin();
     let reader = BufReader::new(stdin);
 
     for line in reader.lines() {
+        log::trace!("carapace received line: {:?}", line);
         let msg: Message = serde_json::from_str(&line?)?;
         let response = handle_message(msg)?;
         println!("{}", serde_json::to_string(&response)?);

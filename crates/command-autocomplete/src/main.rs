@@ -1,6 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 use command_autocomplete::carapace::{run_carapace, CarapaceArgs};
 use command_autocomplete::nushell::{run_nushell, NushellArgs};
+use command_autocomplete::router::{run_router, RouterArgs};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -12,6 +13,7 @@ struct AppArgs {
 #[derive(Debug, Subcommand)]
 enum Command {
     Shell(ShellArgs),
+    Router(RouterArgs),
     Bridge(BridgeArgs),
 }
 
@@ -39,7 +41,7 @@ enum BridgeCommand {
 
 fn main() -> anyhow::Result<()> {
     let args = AppArgs::parse();
-
+    env_logger::init();
     match args.command {
         Command::Bridge(bridge) => match bridge.command {
             BridgeCommand::Carapace(args) => run_carapace(args),
@@ -47,5 +49,6 @@ fn main() -> anyhow::Result<()> {
         Command::Shell(shell) => match shell.command {
             ShellCommand::Nushell(args) => run_nushell(args),
         },
+        Command::Router(args) => run_router(args),
     }
 }

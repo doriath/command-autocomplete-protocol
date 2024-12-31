@@ -8,5 +8,9 @@ members = [
 [workspace.dependencies]
 anyhow = {version = "1"}
 clap = {version = "4", features = ["derive"]}
-serde = {version = "1", features = ["derive"]}
+env_logger = {version = "0.11"}
+googletest = {version = "0.13"}
+log = {version = "0.4"}
 serde_json = {version = "1"}
+serde = {version = "1", features = ["derive"]}
+test-log = {version = "0.2"}

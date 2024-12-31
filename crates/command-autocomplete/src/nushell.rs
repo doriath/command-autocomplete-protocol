@@ -1,4 +1,4 @@
-use crate::core::{CompleteParams, CompleteResult, Message, Request, Response};
+use crate::core::{CompleteParams, CompleteResult, Message, Request, RequestId, Response};
 use anyhow::Context;
 use clap::Args;
 use serde_json::json;
@@ -15,7 +15,7 @@ pub struct NushellArgs {
 pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
     // TODO: make it customizable (we should actually invoke a router)
     let mut child = Command::new("command-autocomplete")
-        .args(["bridge", "carapace"])
+        .args(["router"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
@@ -24,7 +24,7 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
     let mut stdin = child.stdin.take().context("missing stdin")?;
     let stdout = child.stdout.context("missing stdout")?;
     let req = Request::new(
-        "1",
+        RequestId("1".into()),
         "complete",
         CompleteParams {
             args: args.command.clone(),
@@ -43,10 +43,9 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
         let Message::Response(response) = msg else {
             anyhow::bail!("received message other than response");
         };
-        let Response::Ok { id, result } = response else {
+        let Response::Ok { id: _, result } = response else {
             anyhow::bail!("received error");
         };
-        anyhow::ensure!(id == "1", "invalid id in response");
         let result: CompleteResult = serde_json::from_value(result)?;
         println!(
             "{}",

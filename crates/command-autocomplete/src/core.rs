@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Message {
     Request(Request),
@@ -13,38 +13,56 @@ impl From<Response> for Message {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+impl From<Request> for Message {
+    fn from(value: Request) -> Self {
+        Message::Request(value)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
-    pub id: String,
+    pub id: RequestId,
     pub method: String,
     pub params: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq, Hash)]
+pub struct RequestId(pub String);
+
 impl Request {
-    pub fn new(id: impl Into<String>, method: impl Into<String>, params: impl Serialize) -> Self {
+    pub fn new(id: RequestId, method: impl Into<String>, params: impl Serialize) -> Self {
         Request {
-            id: id.into(),
+            id,
             method: method.into(),
             params: serde_json::to_value(params).unwrap(),
         }
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Response {
     Ok {
-        id: String,
+        id: RequestId,
         result: serde_json::Value,
     },
     Err {
-        id: String,
+        id: RequestId,
         error: Error,
     },
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+impl Response {
+    pub fn id(&self) -> &RequestId {
+        match self {
+            Response::Ok { id, result: _ } => id,
+            Response::Err { id, error: _ } => id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Error {
     pub code: String,
     pub message: String,
@@ -67,17 +85,14 @@ impl Error {
 }
 
 impl Response {
-    pub fn new_ok<R: Serialize>(id: impl Into<String>, result: R) -> Self {
+    pub fn new_ok<R: Serialize>(id: RequestId, result: R) -> Self {
         Response::Ok {
-            id: id.into(),
+            id,
             result: serde_json::to_value(result).unwrap(),
         }
     }
-    pub fn new_err(id: impl Into<String>, error: Error) -> Self {
-        Response::Err {
-            id: id.into(),
-            error,
-        }
+    pub fn new_err(id: RequestId, error: Error) -> Self {
+        Response::Err { id, error }
     }
 }
 

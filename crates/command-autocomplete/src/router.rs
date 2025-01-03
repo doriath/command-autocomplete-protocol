@@ -1,4 +1,4 @@
-use crate::connection::Transport;
+use crate::connection::{ResponseError, Transport};
 use crate::types::{CompleteParams, CompleteResult, Error, Request, Response};
 use clap::Args;
 use serde::{Deserialize, Serialize};
@@ -38,17 +38,18 @@ pub fn run_router(_args: RouterArgs) -> anyhow::Result<()> {
         // TODO: check the error, only return default on not found
         Err(_) => Config::default(),
     };
-
-    log::trace!("run_router(): start");
     let (transport, join_handles) = Transport::stdio();
-    let (sender, receiver) = crate::connection::new_connection(transport);
-    let mut router = Router::new(config);
-    while let Some(req) = receiver.next_request() {
-        receiver.reply(router.handle_request(req));
+    {
+        let (_, receiver) = crate::connection::new_connection(transport);
+        let mut router = Router::new(config);
+        while let Some(req) = receiver.next_request() {
+            let shutdown = req.method == "shutdown";
+            receiver.reply(router.handle_request(req));
+            if shutdown {
+                break;
+            }
+        }
     }
-    log::debug!("waiting for threads from transport to finish");
-    drop(sender);
-    drop(receiver);
     join_handles.join()?;
     Ok(())
 }
@@ -136,7 +137,15 @@ impl Router {
         log::debug!("sending complete request to sub process");
         let res = sender.send::<CompleteResult>("complete", params).unwrap();
         log::debug!("waiting for complete response");
-        let res = res.recv().unwrap();
+        let res = res.wait().map_err(|e| match e {
+            ResponseError::Err(e) => e,
+            ResponseError::ChannelClosed => {
+                Error::internal("subprocess closed connection before providing completions")
+            }
+            ResponseError::DeserializationError(err) => Error::internal(format!(
+                "subprocess returned response that failed deserialization, error: {err}"
+            )),
+        });
         log::debug!("received response: {:?}", res.is_ok());
 
         // TODO: exit cleanly

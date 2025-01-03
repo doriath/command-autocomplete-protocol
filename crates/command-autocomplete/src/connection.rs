@@ -1,5 +1,6 @@
 use crate::types::{Message, Request, RequestId, Response};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::mpsc::{Receiver, SyncSender};
@@ -38,34 +39,97 @@ pub struct ConnectionSender {
     sender: SyncSender<Message>,
 }
 
+// shutdown
+// - send shutdown request
+// - disallow sending new requests
+// - close connection
+
+// when A sends shutdown
+// - A can't send any new requests
+// - when A receives response to shutdown, no new messages should be received
+// - A can close receiver and sender
+
+// when B receives shutdown
+// - it knows it will not receive any new requests
+// - it should respond to any active requests
+// - when all active requests are responded to, and no new requests are coming
+//   it should respond to the 'shutdown'
+// - B can close receiver and sender
+
+// premature shutdown
+
+pub struct ResponseHandle<R> {
+    receiver: Receiver<Result<R, ResponseError>>,
+}
+
+pub enum ResponseError {
+    /// Error received by the other side.
+    Err(crate::types::Error),
+    /// The connection has been closed and response will not be received.
+    ChannelClosed,
+    /// The received response failed deserialization into provided type.
+    DeserializationError(serde_json::Error),
+}
+
+impl<R> ResponseHandle<R> {
+    pub fn wait(self) -> Result<R, ResponseError> {
+        match self.receiver.recv() {
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(ResponseError::ChannelClosed),
+        }
+    }
+}
+
 impl ConnectionSender {
+    // errors
+    // - failed to send (channel closed)
+    // - in shutdown
+    // in both cases sender is no longer usable (all calls to send will fail),
+    // so it is best to drop it
+
+    /// Sends the request to the other side of the connection.
+    ///
+    /// Returns a ResponseHandle, that will return a response when received.
+    /// Note that for the response to be received, the ConnectionReceiver has to
+    /// be continuously looped over for new requests.
+    ///
+    /// If the connection is already closed, error is returned.
     pub fn send<R: for<'a> Deserialize<'a> + 'static + Send>(
         &self,
         method: impl Into<String>,
         params: impl Serialize,
-    ) -> Result<Receiver<Result<R, crate::types::Error>>, Error> {
+    ) -> Result<ResponseHandle<R>, SendError> {
         let id = self.ids.next();
 
         self.sender
             .send(Request::new(id.clone(), method, params).into())
-            .map_err(|_| Error {})?;
+            .map_err(|_| SendError {})?;
 
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
 
         self.state.responses.lock().unwrap().insert(
             id,
-            Box::new(move |response: Response| match response {
-                Response::Ok { id: _, result } => {
-                    // TODO
-                    let r: R = serde_json::from_value(result).unwrap();
-                    // TODO
-                    tx.send(Ok(r)).unwrap();
+            Box::new(move |response: Response| {
+                let r: Result<R, ResponseError> = match response {
+                    Response::Ok { id: _, result } => {
+                        serde_json::from_value(result).map_err(ResponseError::DeserializationError)
+                    }
+                    Response::Err { id: _, error } => Err(ResponseError::Err(error)),
+                };
+                if tx.send(r).is_err() {
+                    log::debug!("response ignored, response handle was dropped");
                 }
-                Response::Err { id: _, error } => tx.send(Err(error)).unwrap(),
             }),
         );
+        Ok(ResponseHandle { receiver: rx })
+    }
 
-        Ok(rx)
+    /// Sends shutdown request to the other side.
+    ///
+    /// No new requests are allowed to be send after this call.
+    pub fn shutdown(self) -> Result<ResponseHandle<serde_json::Value>, SendError> {
+        self.send("shutdown", json!({}))
     }
 }
 
@@ -129,7 +193,7 @@ pub struct Transport {
 }
 
 #[derive(Debug)]
-pub struct Error {}
+pub struct SendError {}
 
 pub struct JoinHandles {
     read_join: JoinHandle<()>,
@@ -189,8 +253,8 @@ impl Transport {
         }
     }
 
-    pub fn send(&self, message: Message) -> Result<(), Error> {
-        self.sender.send(message).map_err(|_| Error {})
+    pub fn send(&self, message: Message) -> Result<(), SendError> {
+        self.sender.send(message).map_err(|_| SendError {})
     }
 
     // TODO: should Iterator be used here?

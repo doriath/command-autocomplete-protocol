@@ -1,4 +1,4 @@
-use crate::core::{CompleteParams, CompleteResult, Message, Request, RequestId, Response};
+use crate::types::{CompleteParams, CompleteResult, Message, Request, RequestId, Response};
 use anyhow::Context;
 use clap::Args;
 use serde_json::json;

@@ -1,4 +1,4 @@
-use crate::core::{Message, Request, RequestId, Response};
+use crate::types::{Message, Request, RequestId, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -43,7 +43,7 @@ impl ConnectionSender {
         &self,
         method: impl Into<String>,
         params: impl Serialize,
-    ) -> Result<Receiver<Result<R, crate::core::Error>>, Error> {
+    ) -> Result<Receiver<Result<R, crate::types::Error>>, Error> {
         let id = self.ids.next();
 
         self.sender
@@ -316,7 +316,7 @@ mod tests {
         let t = Transport::raw(c, pipe_w);
         let response = Message::Response(Response::new_err(
             RequestId("1".into()),
-            crate::core::Error::internal("test"),
+            crate::types::Error::internal("test"),
         ));
         t.send(response.clone()).unwrap();
         // Drop, to ensure that the pipe is closed (otherwise below read_to_end will never finish).

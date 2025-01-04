@@ -1,35 +1,27 @@
-use crate::types::{
-    CompleteParams, CompleteResult, CompletionValue, Error, Message, Request, Response,
-};
+use crate::connection::Transport;
+use crate::types::{CompleteParams, CompleteResult, CompletionValue, Error, Request, Response};
 use clap::Args;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Write};
+use serde_json::json;
 use std::process::Command;
 
 #[derive(Debug, Args)]
 pub struct CarapaceArgs {}
 
 pub fn run_carapace(_args: CarapaceArgs) -> anyhow::Result<()> {
-    log::trace!("started carapace");
-    let stdin = std::io::stdin();
-    let reader = BufReader::new(stdin);
-
-    for line in reader.lines() {
-        log::trace!("carapace received line: {:?}", line);
-        let msg: Message = serde_json::from_str(&line?)?;
-        let response = handle_message(msg)?;
-        println!("{}", serde_json::to_string(&response)?);
-        std::io::stdout().flush()?;
+    let (transport, join_handles) = Transport::stdio();
+    {
+        let (_, receiver) = crate::connection::new_connection(transport);
+        while let Some(req) = receiver.next_request() {
+            if req.method == "shutdown" {
+                receiver.reply(Response::new_ok(req.id, json!({})));
+                break;
+            }
+            receiver.reply(handle_request(req));
+        }
     }
-
+    join_handles.join()?;
     Ok(())
-}
-
-fn handle_message(msg: Message) -> anyhow::Result<Response> {
-    let Message::Request(req) = msg else {
-        anyhow::bail!("received a message that is not a request which is not supported");
-    };
-    Ok(handle_request(req))
 }
 
 fn handle_request(req: Request) -> Response {

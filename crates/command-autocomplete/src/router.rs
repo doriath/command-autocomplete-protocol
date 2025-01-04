@@ -50,7 +50,6 @@ pub fn run_router(_args: RouterArgs) -> anyhow::Result<()> {
             }
             receiver.reply(router.handle_request(req));
         }
-        log::trace!("BUUU");
     }
     join_handles.join()?;
     Ok(())

@@ -22,14 +22,15 @@ impl IdGenerator {
     }
 }
 
-pub struct Client {}
-
-pub struct Server {}
+struct ResponseCallback {
+    callback: Box<dyn FnOnce(Response) + Send + 'static>,
+    shutdown: bool,
+}
 
 // Internal state of the connection
 #[derive(Default)]
 struct ConnectionState {
-    responses: Mutex<HashMap<RequestId, Box<dyn FnOnce(Response) + Send + 'static>>>,
+    responses: Mutex<HashMap<RequestId, ResponseCallback>>,
 }
 
 #[derive(Clone)]
@@ -62,6 +63,8 @@ pub struct ResponseHandle<R> {
     receiver: Receiver<Result<R, ResponseError>>,
 }
 
+// TODO: impl Error trait
+#[derive(Debug)]
 pub enum ResponseError {
     /// Error received by the other side.
     Err(crate::types::Error),
@@ -102,15 +105,17 @@ impl ConnectionSender {
     ) -> Result<ResponseHandle<R>, SendError> {
         let id = self.ids.next();
 
+        let method: String = method.into();
+        let shutdown = method == "shutdown";
+
         self.sender
             .send(Request::new(id.clone(), method, params).into())
             .map_err(|_| SendError {})?;
 
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
 
-        self.state.responses.lock().unwrap().insert(
-            id,
-            Box::new(move |response: Response| {
+        let callback = ResponseCallback {
+            callback: Box::new(move |response: Response| {
                 let r: Result<R, ResponseError> = match response {
                     Response::Ok { id: _, result } => {
                         serde_json::from_value(result).map_err(ResponseError::DeserializationError)
@@ -121,7 +126,10 @@ impl ConnectionSender {
                     log::debug!("response ignored, response handle was dropped");
                 }
             }),
-        );
+            shutdown,
+        };
+
+        self.state.responses.lock().unwrap().insert(id, callback);
         Ok(ResponseHandle { receiver: rx })
     }
 
@@ -137,6 +145,7 @@ pub struct ConnectionReceiver {
     state: Arc<ConnectionState>,
     receiver: Receiver<Message>,
     sender: SyncSender<Message>,
+    shutdown: Mutex<bool>,
 }
 
 impl ConnectionReceiver {
@@ -145,6 +154,9 @@ impl ConnectionReceiver {
     // returns None when the connection is closed
     // TODO: figure out if we can somehow enforce that reply always happens
     pub fn next_request(&self) -> Option<Request> {
+        if *self.shutdown.lock().unwrap() {
+            return None;
+        }
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 Message::Request(req) => return Some(req),
@@ -157,7 +169,12 @@ impl ConnectionReceiver {
                         );
                         return None;
                     };
-                    callback(res);
+                    (callback.callback)(res);
+                    if callback.shutdown {
+                        let mut x = self.shutdown.lock().unwrap();
+                        *x = true;
+                        return None;
+                    }
                 }
             }
         }
@@ -182,6 +199,7 @@ pub fn new_connection(transport: Transport) -> (ConnectionSender, ConnectionRece
             state,
             receiver: transport.receiver,
             sender: transport.sender,
+            shutdown: Default::default(),
         },
     )
 }
@@ -192,6 +210,7 @@ pub struct Transport {
     sender: SyncSender<Message>,
 }
 
+// TODO: implement Error trait
 #[derive(Debug)]
 pub struct SendError {}
 
@@ -209,15 +228,25 @@ impl JoinHandles {
 }
 
 impl Transport {
-    // TODO: also return join handles for the created threads.
     pub fn stdio() -> (Transport, JoinHandles) {
+        Self::raw(std::io::stdin(), std::io::stdout())
+    }
+
+    pub fn raw<R: Read + Send + 'static, W: Write + Send + 'static>(
+        read: R,
+        write: W,
+    ) -> (Transport, JoinHandles) {
         let (read_tx, read_rx) = std::sync::mpsc::sync_channel(0);
         let read_join = std::thread::spawn(move || {
-            read_loop(std::io::stdin(), read_tx).unwrap();
+            if let Err(err) = read_loop(read, read_tx) {
+                log::error!("read_loop err: {err}");
+            }
         });
         let (write_tx, write_rx) = std::sync::mpsc::sync_channel(0);
         let write_join = std::thread::spawn(move || {
-            write_loop(std::io::stdout().lock(), write_rx).unwrap();
+            if let Err(err) = write_loop(write, write_rx) {
+                log::error!("write_loop err: {err}");
+            }
         });
         (
             Transport {
@@ -229,28 +258,6 @@ impl Transport {
                 write_join,
             },
         )
-    }
-
-    pub fn raw<R: Read + Send + 'static, W: Write + Send + 'static>(
-        read: R,
-        write: W,
-    ) -> Transport {
-        let (read_tx, read_rx) = std::sync::mpsc::sync_channel(0);
-        std::thread::spawn(move || {
-            if let Err(err) = read_loop(read, read_tx) {
-                log::error!("read_loop err: {err}");
-            }
-        });
-        let (write_tx, write_rx) = std::sync::mpsc::sync_channel(0);
-        std::thread::spawn(move || {
-            if let Err(err) = write_loop(write, write_rx) {
-                log::error!("write_loop err: {err}");
-            }
-        });
-        Transport {
-            receiver: read_rx,
-            sender: write_tx,
-        }
     }
 
     pub fn send(&self, message: Message) -> Result<(), SendError> {
@@ -368,16 +375,17 @@ mod tests {
             serde_json::to_vec(&json!({"id": "1", "method": "complete", "params":{}})).unwrap();
         let c = Cursor::new(input);
         let output: Vec<u8> = Vec::new();
-        let t = Transport::raw(c, output);
+        let (t, join_handles) = Transport::raw(c, output);
         expect_that!(t.next_message(), some(anything()));
         expect_that!(t.next_message(), none());
+        join_handles.join();
     }
 
     #[test(gtest)]
     fn writes_one_message() {
         let (pipe_w, mut pipe_r) = pipe();
         let c = Cursor::new(vec![]);
-        let t = Transport::raw(c, pipe_w);
+        let (t, join_handles) = Transport::raw(c, pipe_w);
         let response = Message::Response(Response::new_err(
             RequestId("1".into()),
             crate::types::Error::internal("test"),
@@ -390,5 +398,6 @@ mod tests {
         let mut expected = serde_json::to_vec(&response).unwrap();
         expected.push(b'\n');
         expect_that!(output, eq(&expected));
+        join_handles.join();
     }
 }

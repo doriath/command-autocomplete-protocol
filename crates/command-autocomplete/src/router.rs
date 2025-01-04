@@ -2,6 +2,7 @@ use crate::connection::{ResponseError, Transport};
 use crate::types::{CompleteParams, CompleteResult, Error, Request, Response};
 use clap::Args;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -43,12 +44,13 @@ pub fn run_router(_args: RouterArgs) -> anyhow::Result<()> {
         let (_, receiver) = crate::connection::new_connection(transport);
         let mut router = Router::new(config);
         while let Some(req) = receiver.next_request() {
-            let shutdown = req.method == "shutdown";
-            receiver.reply(router.handle_request(req));
-            if shutdown {
+            if req.method == "shutdown" {
+                receiver.reply(Response::new_ok(req.id, json!({})));
                 break;
             }
+            receiver.reply(router.handle_request(req));
         }
+        log::trace!("BUUU");
     }
     join_handles.join()?;
     Ok(())
@@ -118,7 +120,7 @@ impl Router {
         let stdout = child.stdout.take().unwrap();
 
         log::debug!("starting sub connection");
-        let transport = Transport::raw(stdout, stdin);
+        let (transport, _join_handles) = Transport::raw(stdout, stdin);
         let (sender, receiver) = crate::connection::new_connection(transport);
 
         // TODO: join

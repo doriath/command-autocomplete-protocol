@@ -1,8 +1,8 @@
-use crate::types::{CompleteParams, CompleteResult, Message, Request, RequestId, Response};
+use crate::connection::Transport;
+use crate::types::{CompleteParams, CompleteResult, Error, Response};
 use anyhow::Context;
 use clap::Args;
 use serde_json::json;
-use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
 #[derive(Debug, Args)]
@@ -21,45 +21,55 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
         .spawn()?;
 
     // Send one message to perform completion
-    let mut stdin = child.stdin.take().context("missing stdin")?;
-    let stdout = child.stdout.context("missing stdout")?;
-    let req = Request::new(
-        RequestId("1".into()),
-        "complete",
-        CompleteParams {
-            args: args.command.clone(),
-        },
-    );
-    let mut b = serde_json::to_vec(&req)?;
-    b.push(b'\n');
-    stdin.write_all(&b)?;
-    stdin.flush()?;
-    drop(stdin);
+    let stdin = child.stdin.take().context("missing stdin")?;
+    let stdout = child.stdout.take().context("missing stdout")?;
 
-    // Read the result of the completion.
-    let reader = BufReader::new(stdout);
-    for line in reader.lines() {
-        let msg: Message = serde_json::from_str(&line?)?;
-        let Message::Response(response) = msg else {
-            anyhow::bail!("received message other than response");
-        };
-        let Response::Ok { id: _, result } = response else {
-            anyhow::bail!("received error");
-        };
-        let result: CompleteResult = serde_json::from_value(result)?;
-        println!(
-            "{}",
-            json!(result
-                .values
-                .into_iter()
-                .map(|v| {
-                    json! ({
-                        "value": v.value,
-                        "description": v.description,
-                    })
+    let (transport, join_handles) = Transport::raw(stdout, stdin);
+    let (sender, receiver) = crate::connection::new_connection(transport);
+
+    let join_handle = std::thread::spawn(move || {
+        // This is required to read the incoming responses.
+        while let Some(req) = receiver.next_request() {
+            receiver.reply(Response::new_err(
+                req.id,
+                Error::invalid_request("no requests expected"),
+            ));
+        }
+    });
+    // TODO: handle unwrap
+    let res_handle = sender
+        .send(
+            "complete",
+            CompleteParams {
+                args: args.command.clone(),
+            },
+        )
+        .unwrap();
+
+    // TODO: handle unwrap
+    let result: CompleteResult = res_handle.wait().unwrap();
+
+    // TODO: handle unwrap
+    sender.shutdown().unwrap().wait().unwrap();
+
+    log::debug!("waiting for transport threads to finish");
+    join_handles.join()?;
+    log::debug!("waiting for receiver to finish");
+    // TODO: handle unwrap
+    join_handle.join().unwrap();
+
+    println!(
+        "{}",
+        json!(result
+            .values
+            .into_iter()
+            .map(|v| {
+                json! ({
+                    "value": v.value,
+                    "description": v.description,
                 })
-                .collect::<Vec<_>>())
-        );
-    }
+            })
+            .collect::<Vec<_>>())
+    );
     Ok(())
 }

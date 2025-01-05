@@ -9,7 +9,7 @@ use std::process::Command;
 pub struct CarapaceArgs {}
 
 pub fn run_carapace(_args: CarapaceArgs) -> anyhow::Result<()> {
-    let (transport, join_handles) = Transport::stdio();
+    let (transport, join_handle) = Transport::stdio();
     {
         let (_, receiver) = crate::connection::new_connection(transport);
         while let Some(req) = receiver.next_request() {
@@ -20,7 +20,7 @@ pub fn run_carapace(_args: CarapaceArgs) -> anyhow::Result<()> {
             receiver.reply(handle_request(req));
         }
     }
-    join_handles.join()?;
+    join_handle.join()?;
     Ok(())
 }
 

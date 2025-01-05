@@ -39,7 +39,7 @@ pub fn run_router(_args: RouterArgs) -> anyhow::Result<()> {
         // TODO: check the error, only return default on not found
         Err(_) => Config::default(),
     };
-    let (transport, join_handles) = Transport::stdio();
+    let (transport, join_handle) = Transport::stdio();
     {
         let (_, receiver) = crate::connection::new_connection(transport);
         let mut router = Router::new(config);
@@ -51,7 +51,7 @@ pub fn run_router(_args: RouterArgs) -> anyhow::Result<()> {
             receiver.reply(router.handle_request(req));
         }
     }
-    join_handles.join()?;
+    join_handle.join()?;
     Ok(())
 }
 
@@ -119,7 +119,7 @@ impl Router {
         let stdout = child.stdout.take().unwrap();
 
         log::debug!("starting sub connection");
-        let (transport, _join_handles) = Transport::raw(stdout, stdin);
+        let (transport, _join_handle) = Transport::raw(stdout, stdin);
         let (sender, receiver) = crate::connection::new_connection(transport);
 
         // TODO: join

@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
 
 // TODO: make it a trait
 #[derive(Default)]
@@ -214,12 +213,12 @@ pub struct Transport {
 #[derive(Debug)]
 pub struct SendError {}
 
-pub struct JoinHandles {
-    read_join: JoinHandle<()>,
-    write_join: JoinHandle<()>,
+pub struct JoinHandle {
+    read_join: std::thread::JoinHandle<()>,
+    write_join: std::thread::JoinHandle<()>,
 }
 
-impl JoinHandles {
+impl JoinHandle {
     pub fn join(self) -> anyhow::Result<()> {
         self.read_join.join().unwrap();
         self.write_join.join().unwrap();
@@ -228,14 +227,14 @@ impl JoinHandles {
 }
 
 impl Transport {
-    pub fn stdio() -> (Transport, JoinHandles) {
+    pub fn stdio() -> (Transport, JoinHandle) {
         Self::raw(std::io::stdin(), std::io::stdout())
     }
 
     pub fn raw<R: Read + Send + 'static, W: Write + Send + 'static>(
         read: R,
         write: W,
-    ) -> (Transport, JoinHandles) {
+    ) -> (Transport, JoinHandle) {
         let (read_tx, read_rx) = std::sync::mpsc::sync_channel(0);
         let read_join = std::thread::spawn(move || {
             if let Err(err) = read_loop(read, read_tx) {
@@ -253,7 +252,7 @@ impl Transport {
                 receiver: read_rx,
                 sender: write_tx,
             },
-            JoinHandles {
+            JoinHandle {
                 read_join,
                 write_join,
             },

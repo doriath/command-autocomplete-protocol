@@ -24,10 +24,10 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
     let stdin = child.stdin.take().context("missing stdin")?;
     let stdout = child.stdout.take().context("missing stdout")?;
 
-    let (transport, join_handles) = Transport::raw(stdout, stdin);
+    let (transport, join_handle) = Transport::raw(stdout, stdin);
     let (sender, receiver) = crate::connection::new_connection(transport);
 
-    let join_handle = std::thread::spawn(move || {
+    let recv_join_handle = std::thread::spawn(move || {
         // This is required to read the incoming responses.
         while let Some(req) = receiver.next_request() {
             receiver.reply(Response::new_err(
@@ -53,10 +53,10 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
     sender.shutdown().unwrap().wait().unwrap();
 
     log::debug!("waiting for transport threads to finish");
-    join_handles.join()?;
+    join_handle.join()?;
     log::debug!("waiting for receiver to finish");
     // TODO: handle unwrap
-    join_handle.join().unwrap();
+    recv_join_handle.join().unwrap();
 
     println!(
         "{}",

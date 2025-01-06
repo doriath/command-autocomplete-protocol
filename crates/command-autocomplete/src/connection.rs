@@ -62,7 +62,6 @@ pub struct ResponseHandle<R> {
     receiver: Receiver<Result<R, ResponseError>>,
 }
 
-// TODO: impl Error trait
 #[derive(Debug)]
 pub enum ResponseError {
     /// Error received by the other side.
@@ -83,13 +82,23 @@ impl<R> ResponseHandle<R> {
     }
 }
 
-impl ConnectionSender {
-    // errors
-    // - failed to send (channel closed)
-    // - in shutdown
-    // in both cases sender is no longer usable (all calls to send will fail),
-    // so it is best to drop it
+impl std::fmt::Display for ResponseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResponseError::Err(err) => write!(f, "received error: {:?}", err),
+            ResponseError::ChannelClosed => {
+                write!(f, "response not received, channel has been closed")
+            }
+            ResponseError::DeserializationError(err) => {
+                write!(f, "response has unexpected result type: {err}")
+            }
+        }
+    }
+}
 
+impl std::error::Error for ResponseError {}
+
+impl ConnectionSender {
     /// Sends the request to the other side of the connection.
     ///
     /// Returns a ResponseHandle, that will return a response when received.
@@ -147,18 +156,56 @@ pub struct ConnectionReceiver {
     shutdown: Mutex<bool>,
 }
 
+pub struct ConnRequest {
+    inner: Request,
+    sender: SyncSender<Message>,
+}
+
+impl ConnRequest {
+    pub fn inner(&self) -> &Request {
+        &self.inner
+    }
+
+    pub fn reply<R: Serialize>(
+        self,
+        response: Result<R, crate::types::Error>,
+    ) -> Result<(), SendError> {
+        match response {
+            Ok(result) => self.reply_ok(result),
+            Err(err) => self.reply_err(err),
+        }
+    }
+
+    pub fn reply_ok<R: Serialize>(self, result: R) -> Result<(), SendError> {
+        let response = Response::new_ok(self.inner.id, result);
+        self.sender
+            .send(Message::Response(response))
+            .map_err(|_| SendError {})
+    }
+    pub fn reply_err(self, err: crate::types::Error) -> Result<(), SendError> {
+        let response = Response::new_err(self.inner.id, err);
+        self.sender
+            .send(Message::Response(response))
+            .map_err(|_| SendError {})
+    }
+}
+
 impl ConnectionReceiver {
     // Note: This has to be called / polled continuously to ensure the
     // responses are populated
     // returns None when the connection is closed
-    // TODO: figure out if we can somehow enforce that reply always happens
-    pub fn next_request(&self) -> Option<Request> {
+    pub fn next_request(&self) -> Option<ConnRequest> {
         if *self.shutdown.lock().unwrap() {
             return None;
         }
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                Message::Request(req) => return Some(req),
+                Message::Request(req) => {
+                    return Some(ConnRequest {
+                        inner: req,
+                        sender: self.sender.clone(),
+                    })
+                }
                 Message::Response(res) => {
                     let mut r = self.state.responses.lock().unwrap();
                     let Some(callback) = r.remove(res.id()) else {
@@ -179,11 +226,6 @@ impl ConnectionReceiver {
         }
         None
     }
-
-    pub fn reply(&self, response: Response) {
-        // TODO: handle unwrap
-        self.sender.send(response.into()).unwrap()
-    }
 }
 
 pub fn new_connection(transport: Transport) -> (ConnectionSender, ConnectionReceiver) {
@@ -203,15 +245,21 @@ pub fn new_connection(transport: Transport) -> (ConnectionSender, ConnectionRece
     )
 }
 
-// TODO: Transport vs Channel
 pub struct Transport {
     receiver: Receiver<Message>,
     sender: SyncSender<Message>,
 }
 
-// TODO: implement Error trait
 #[derive(Debug)]
 pub struct SendError {}
+
+impl std::fmt::Display for SendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "failed to send a message, the channel is already closed")
+    }
+}
+
+impl std::error::Error for SendError {}
 
 pub struct JoinHandle {
     read_join: std::thread::JoinHandle<()>,
@@ -377,7 +425,7 @@ mod tests {
         let (t, join_handles) = Transport::raw(c, output);
         expect_that!(t.next_message(), some(anything()));
         expect_that!(t.next_message(), none());
-        join_handles.join();
+        join_handles.join().unwrap();
     }
 
     #[test(gtest)]
@@ -397,6 +445,6 @@ mod tests {
         let mut expected = serde_json::to_vec(&response).unwrap();
         expected.push(b'\n');
         expect_that!(output, eq(&expected));
-        join_handles.join();
+        join_handles.join().unwrap();
     }
 }

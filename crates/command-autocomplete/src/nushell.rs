@@ -1,5 +1,5 @@
-use crate::connection::Transport;
-use crate::types::{CompleteParams, CompleteResult, Error, Response};
+use crate::connection::{ConnectionSender, Transport};
+use crate::types::{CompleteParams, CompleteResult, Error};
 use anyhow::Context;
 use clap::Args;
 use serde_json::json;
@@ -20,7 +20,6 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
         .stdout(Stdio::piped())
         .spawn()?;
 
-    // Send one message to perform completion
     let stdin = child.stdin.take().context("missing stdin")?;
     let stdout = child.stdout.take().context("missing stdout")?;
 
@@ -30,12 +29,33 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
     let recv_join_handle = std::thread::spawn(move || {
         // This is required to read the incoming responses.
         while let Some(req) = receiver.next_request() {
-            receiver.reply(Response::new_err(
-                req.id,
-                Error::invalid_request("no requests expected"),
-            ));
+            let r = req.reply_err(Error::invalid_request("no requests expected"));
+            if r.is_err() {
+                log::warn!("The connection closed unexpectedly, stopping the receving loop");
+                break;
+            }
         }
     });
+    if let Err(err) = complete_and_shutdown(args, sender) {
+        log::error!("Completion failed, will kill subprocess: {}", err);
+        if let Err(err) = child.kill() {
+            log::warn!("Failed to kill subprocess: {err}")
+        }
+    }
+
+    if let Err(err) = child.wait() {
+        log::warn!("Failed to wait for the subprocess: {err}");
+    }
+    if let Err(err) = recv_join_handle.join() {
+        log::warn!("receiving thread failed: {:?}", err);
+    }
+    if let Err(err) = join_handle.join() {
+        log::warn!("connection threads failed: {:?}", err);
+    }
+    Ok(())
+}
+
+fn complete_and_shutdown(args: NushellArgs, sender: ConnectionSender) -> anyhow::Result<()> {
     // TODO: handle unwrap
     let res_handle = sender
         .send(
@@ -44,19 +64,13 @@ pub fn run_nushell(args: NushellArgs) -> anyhow::Result<()> {
                 args: args.command.clone(),
             },
         )
-        .unwrap();
+        .context("complete command failed")?;
 
     // TODO: handle unwrap
-    let result: CompleteResult = res_handle.wait().unwrap();
+    let result: CompleteResult = res_handle.wait().context("complete command failed")?;
 
     // TODO: handle unwrap
     sender.shutdown().unwrap().wait().unwrap();
-
-    log::debug!("waiting for transport threads to finish");
-    join_handle.join()?;
-    log::debug!("waiting for receiver to finish");
-    // TODO: handle unwrap
-    recv_join_handle.join().unwrap();
 
     println!(
         "{}",

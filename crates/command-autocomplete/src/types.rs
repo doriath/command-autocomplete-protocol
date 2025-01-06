@@ -112,3 +112,6 @@ pub struct CompletionValue {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ShutdownResult {}

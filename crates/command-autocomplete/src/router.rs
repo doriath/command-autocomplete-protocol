@@ -1,8 +1,7 @@
-use crate::connection::{ResponseError, Transport};
-use crate::types::{CompleteParams, CompleteResult, Error, Request, Response};
+use crate::connection::{ConnRequest, ResponseError, SendError, Transport};
+use crate::types::{CompleteParams, CompleteResult, Error, ShutdownResult};
 use clap::Args;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -44,11 +43,14 @@ pub fn run_router(_args: RouterArgs) -> anyhow::Result<()> {
         let (_, receiver) = crate::connection::new_connection(transport);
         let mut router = Router::new(config);
         while let Some(req) = receiver.next_request() {
-            if req.method == "shutdown" {
-                receiver.reply(Response::new_ok(req.id, json!({})));
-                break;
-            }
-            receiver.reply(router.handle_request(req));
+            match router.handle_request(req) {
+                Ok(LoopAction::Continue) => continue,
+                Ok(LoopAction::Stop) => break,
+                Err(_) => {
+                    log::warn!("the connection closed unexpectedly, stopping the receving loop");
+                    break;
+                }
+            };
         }
     }
     join_handle.join()?;
@@ -59,30 +61,41 @@ struct Router {
     config: Config,
 }
 
+enum LoopAction {
+    Continue,
+    Stop,
+}
+
 impl Router {
     fn new(config: Config) -> Self {
         Router { config }
     }
 
-    fn handle_request(&mut self, req: Request) -> Response {
-        match req.method.as_str() {
-            "complete" => {
-                let Ok(params) = serde_json::from_value(req.params) else {
-                    return Response::new_err(
-                        req.id,
-                        Error::invalid_request("invalid params for complete request"),
-                    );
-                };
-                Response::new_ok(req.id, self.handle_complete_request(params).unwrap())
+    fn handle_request(&mut self, req: ConnRequest) -> Result<LoopAction, SendError> {
+        match req.inner().method.as_str() {
+            "complete" => match serde_json::from_value(req.inner().params.clone()) {
+                Ok(params) => {
+                    req.reply(self.handle_complete_request(params))?;
+                }
+                Err(err) => {
+                    req.reply_err(Error::invalid_request(format!(
+                        "invalid params for complete request: {err}"
+                    )))?;
+                }
+            },
+            "shutdown" => {
+                req.reply_ok(ShutdownResult {})?;
+                return Ok(LoopAction::Stop);
             }
-            _ => Response::new_err(
-                req.id,
-                Error {
+            _ => {
+                let method = req.inner().method.clone();
+                req.reply_err(Error {
                     code: "UNKNOWN_REQUEST".to_string(),
-                    message: format!("method {} is not recognized", req.method),
-                },
-            ),
+                    message: format!("method {} is not recognized", method),
+                })?;
+            }
         }
+        Ok(LoopAction::Continue)
     }
 
     fn completer(&self, params: &CompleteParams) -> Option<std::process::Command> {
@@ -108,29 +121,33 @@ impl Router {
             // TODO: handle this better
             return Ok(CompleteResult { values: vec![] });
         };
+        log::debug!("starting external completer: {:?}", command);
+
         // TODO: unwrap
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
-            .unwrap();
-        // TODO: unwrap
-        let stdin = child.stdin.take().unwrap();
-        let stdout = child.stdout.take().unwrap();
+            .map_err(|e| Error::internal(format!("failed to start the completer: {e}")))?;
 
-        log::debug!("starting sub connection");
-        let (transport, _join_handle) = Transport::raw(stdout, stdin);
+        // TODO: unwrap
+        let stdin = child.stdin.take().ok_or_else(|| {
+            Error::internal("stdin missing in started process, this should never happen")
+        })?;
+        let stdout = child.stdout.take().ok_or_else(|| {
+            Error::internal("stdout missing in started process, this should never happen")
+        })?;
+
+        let (transport, join_handle) = Transport::raw(stdout, stdin);
         let (sender, receiver) = crate::connection::new_connection(transport);
 
-        // TODO: join
-        let _join = std::thread::spawn(move || {
+        let recv_join_handle = std::thread::spawn(move || {
             // ensuring we read the response
-            log::debug!("receiver.next_request(): start");
             while let Some(req) = receiver.next_request() {
-                receiver.reply(Response::new_err(
-                    req.id,
-                    Error::invalid_request("no requests expected"),
-                ));
+                let r = req.reply_err(Error::invalid_request("no requests expected"));
+                if r.is_err() {
+                    break;
+                }
             }
             log::debug!("receiver finished");
         });
@@ -149,8 +166,14 @@ impl Router {
         });
         log::debug!("received response: {:?}", res.is_ok());
 
+        // TODO: handle unwrap
+        sender.shutdown().unwrap().wait().unwrap();
+
+        join_handle.join().unwrap();
+        recv_join_handle.join().unwrap();
+        child.wait().unwrap();
+
         // TODO: exit cleanly
-        // child.wait().unwrap();
         res
     }
 }

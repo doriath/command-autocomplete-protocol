@@ -1,5 +1,6 @@
 use clap::{Args, Parser, Subcommand};
 use command_autocomplete::carapace::{run_carapace, CarapaceArgs};
+use command_autocomplete::complete::run_complete;
 use command_autocomplete::nushell::{run_nushell, NushellArgs};
 use command_autocomplete::router::{run_router, RouterArgs};
 
@@ -15,6 +16,7 @@ enum Command {
     Shell(ShellArgs),
     Router(RouterArgs),
     Bridge(BridgeArgs),
+    Complete,
 }
 
 #[derive(Debug, Args)]
@@ -50,5 +52,6 @@ fn main() -> anyhow::Result<()> {
             ShellCommand::Nushell(args) => run_nushell(args),
         },
         Command::Router(args) => run_router(args),
+        Command::Complete => run_complete(),
     }
 }

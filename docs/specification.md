@@ -22,7 +22,7 @@ objects over time with new fields, so all implementations should always handle
 new, unknown fields in the object (unless explicitly stated that the object is
 `closed` and will not have new fields).
 
-TODO: consider if we should allow nulls, and just treat them always the same way
+TODO: consider if we should allow nulls and just treat them always the same way
 as missing field.
 
 TODO: find if there is a better way to define the protocol that does not depend
@@ -85,21 +85,38 @@ The following are NOT considered invalid protocol lines:
 
 - the `Request.method` is unknown (error MUST be returned with `INVALID_REQUEST` code)
 - the `Request.params` does not match the method (error MUST be returned with `INVALID_REQUEST` code)
-- the result contains unexpected result (TODO: what to do here?)
-
-TODO: consider if instead of closing the communication, we should instead
-introduce a custom ErrorRequest that should be sent when error was encountered.
+- the result contains unexpected result
 
 ## Messages
 
-TODO: figure out if we should always have explicit `initialize` method, to
-communicate the version / capabilities of both sides.
+### Initialize
+
+- Method: `initialize`
+- Request Params: `InitializeParams`
+- Response Result: `InitializeResult`
+
+We are introducing this method, so that in the future we can extend the protocol
+by adding new capabilities into the initialization.
+
+```typescript
+interface InitializeParams {
+}
+
+interface InitializeResult {
+}
+```
 
 ### Complete
+
+- Method: `complete`
+- Request Params: `CompleteParams`
+- Response Result: `CompleteResult`
 
 ```typescript
 interface CompleteParams {
   args: string[];
+  working_dir: string,
+  envs: EnvironmentVariable[]
 }
 
 interface CompleteResult {
@@ -110,10 +127,21 @@ interface CompleteValue {
   value: string;
   description?: string;
 }
+
+interface EnvironmentVariable {
+  name: string,
+  value: string,
+}
 ```
 
-## Miscellaneus
+### Shutdown
 
-### Transport
+- Method: `shutdown`
+- Request Params: `ShutdownParams`
+- Response Result: `ShutdownResult`
 
-CLIs should use `stdin` and `stdout` to send and receive the requests.
+```typescript
+interface ShutdownParams { }
+interface ShutdownResult { }
+```
+

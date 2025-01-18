@@ -8,15 +8,15 @@ suggestions to influence the protocol are very welcome.
 
 ## What is the Command Autocomplete Protocol?
 
-Implementing high quality autocomplete is hard and has to be repeated for
-every shell. This is a problem that affects three groups - the owners of the
-CLIs, the owners of frameworks that support argument parsing and the shell
-creators.
+Implementing high quality completions is hard and has to be repeated for every
+shell. This is a problem that affects three groups - the owners of the CLIs, the
+owners of frameworks that support argument parsing and the shell creators.
 
-The goal of this project is to provide a unified protocol for providing
-autocomplete, so that each CLI owner has to implement autocomplete just once,
-and it will work with all shells that support it. Similarly, shell owners can
-implement this protocol and support autocomplete in many CLIs out of the box.
+The goal of this project is to create a unified protocol for providing
+command line completions, so that each CLI owner has to implement autocomplete
+just once, and it will work with all shells that support it. Similarly, shell
+owners can implement this protocol and support completions in many CLIs out of
+the box.
 
 ## How it works?
 
@@ -25,7 +25,7 @@ Server Protocol](https://microsoft.github.io/languag-server-protocol).
 
 When user presses tab in the command line, shell starts the appropriate Command
 Autocomplete Server (which can be embedded inside the CLI directly or can be
-done by external command) and exchanges messages to provide autocompletes.
+done by external command) and exchanges messages to provide completions.
 
 The autocompletion is divided into 3 main parts:
 
@@ -41,25 +41,25 @@ usable for a given shell.
 
 Every CLI will have its own custom server that provides completions, so we
 need a **Router** that will know which server to execute based on given command
-that has to be autocompleted. The **Router** is just a Command Autocomplete
-Server, that contains a mapping from a CLI name to server to start (e.g. `jj`
--> `jj complete cap`). It then starts the subserver and proxies requests to it.
-The router is not strictly required and can be implemented directly into the
-**Shell bridge**.
+for which completions should be provided. The **Router** is just a Command
+Autocomplete Server, that contains a mapping from a CLI name to server to start
+(e.g. `jj` -> `jj complete`). It then starts the subserver and proxies requests
+to it. The router is not strictly required and can be implemented directly into
+the **Shell bridge**.
 
-Last, we have the actual Command Autocomplete Servers. Such servers can be
-built directly into the CLI itself (the recommendation is to provide `<CLI>
-complete cap` command) or can be provided through separate binary. Bridges
-are Command Autocomplete Servers that provide completions for many CLIs by
-using external completions mechanisms.
+Last, we have the actual Command Autocomplete Servers. Such servers can be built
+directly into the CLI itself (the recommendation is to provide `<CLI> complete`
+command) or can be provided through separate binary. Bridges are Command
+Autocomplete Servers that provide completions for many CLIs by using external
+completions mechanisms.
 
 ## Goals
 
 1. Standardize completions - CLI owners have to support just one autocomplete protocol,
 2. Language agnostic - CLI owners have flexibility to implement completions in the language they prefer,
-3. Synchronization - it should be simple to keep the completions up to date as the CLI evolves
-4. Fast shell startups - avoid per CLI custom shell scripts, that slow down shell startups
-5. Support most common use cases (e.g. plugins and nesting)
+3. Synchronization - it should be simple to keep the completions up to date as the CLI evolves,
+4. Fast shell startups - avoid per CLI custom shell scripts, that slow down shell startups,
+5. Support most common use cases (e.g. plugins and nesting).
 
 ## Specification
 
@@ -83,7 +83,7 @@ as a bridge to support many completions out of the box.
   cargo install --path crates/command-autocomplete
   ```
 
-4. Configure external complete in `nushell`:
+4. Configure external completions in `nushell`:
 
   ```nushell
   let cap_completer = {|spans|

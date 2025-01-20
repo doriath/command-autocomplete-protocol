@@ -5,8 +5,8 @@ Version: 0.1.0
 ## Overview
 
 This document defines a Command Autocomplete Protocol. It is an RPC like
-protocol between a client (e.g. shell) and a server (e.g. CLI providing the
-completions).
+protocol between a `client` (e.g. shell) and a `server` (e.g. CLI providing
+the completions).
 
 ## Conventions
 
@@ -94,6 +94,7 @@ The following are NOT considered invalid protocol lines:
 - Method: `initialize`
 - Request Params: `InitializeParams`
 - Response Result: `InitializeResult`
+- Direction: `Client -> Server`
 
 We are introducing this method, so that in the future we can extend the protocol
 by adding new capabilities into the initialization.

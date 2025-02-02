@@ -72,6 +72,9 @@ fn complete_and_shutdown(args: NushellArgs, sender: ConnectionSender) -> anyhow:
     // TODO: handle unwrap
     sender.shutdown().unwrap().wait().unwrap();
 
+    // Fail when there are no completions, to trigger default completions from nushell.
+    anyhow::ensure!(!result.values.is_empty(), "no completions");
+
     println!(
         "{}",
         json!(result

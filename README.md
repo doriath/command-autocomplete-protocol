@@ -72,18 +72,13 @@ through `command-autocomplete` binary. This binary currently only supports
 [nushell](https://github.com/nushell/nushell) and uses [carapace](https://carapace.sh/)
 as a bridge to support many completions out of the box.
 
-1. Install carapace binary (just the binary, shell integration not required), by
-   following https://carapace.sh/
-
-2. Clone the repository
-
-3. Install the binary:
+1. Install the binary:
 
   ```
-  cargo install --path crates/command-autocomplete
+  cargo install command-autocomplete
   ```
 
-4. Configure external completions in `nushell`:
+2. Configure external completions in `nushell`:
 
   ```nushell
   let cap_completer = {|spans|
@@ -99,6 +94,9 @@ as a bridge to support many completions out of the box.
     },
   }
   ```
+
+3. Install carapace binary (just the binary, shell integration not required), by
+   following https://carapace.sh/
 
 ## Open questions
 

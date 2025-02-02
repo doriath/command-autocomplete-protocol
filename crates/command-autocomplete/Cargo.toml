@@ -1,7 +1,10 @@
 [package]
 name = "command-autocomplete"
+description = "Implementation of Command Autocomplete Protocol"
+repository = "https://github.com/doriath/command-autocomplete-protocol/tree/main/crates/command-autocomplete"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
 anyhow = {workspace = true}
